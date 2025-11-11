@@ -32,7 +32,14 @@ impl TokenList {
 }
 
 fn get_keywords() -> Vec<&'static str> {
-    vec!["int", "return", "module", "string", "float", "if"].into()
+    vec!["int", "char", "return", "module", "string", "float", "if"].into()
+}
+
+fn is_op_char(c: char) -> bool {
+    // Allowed operator characters (Haskell style):
+    !c.is_alphanumeric()
+        && !c.is_whitespace()
+        && !matches!(c, '_' | '(' | ')' | '{' | '}' | '[' | ']' | '"' | '\'')
 }
 
 impl From<String> for TokenList {
@@ -112,24 +119,51 @@ impl From<String> for TokenList {
                     }
                 }
 
-                // Identifiers or keywords
-                _ if (c.is_alphabetic() || c == '_') => {
+                // Identifiers (allow embedded backtick sections)
+                _ if c.is_alphabetic() || c == '_' => {
                     let mut ident = String::new();
+
+                    // consume first char
+                    ident.push(c);
+                    chars.next();
+
                     while let Some(&ch) = chars.peek() {
-                        if ch.is_alphanumeric() || ch == '_' {
-                            ident.push(ch);
-                            chars.next();
-                        } else {
-                            break;
+                        match ch {
+                            // normal identifier characters
+                            _ if ch.is_alphanumeric() || ch == '_' => {
+                                ident.push(ch);
+                                chars.next();
+                            }
+
+                            // start of backtick segment: copy everything until closing `
+                            '`' => {
+                                ident.push(ch);
+                                chars.next(); // consume `
+
+                                // read until the next backtick
+                                while let Some(&inside) = chars.peek() {
+                                    ident.push(inside);
+                                    chars.next();
+                                    if inside == '`' {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // anything else ends identifier
+                            _ => break,
                         }
                     }
-                    if get_keywords().contains(&ident.as_str()) {
+
+                    // keywords only apply if *no* backticks occur
+                    if ident.contains('`') {
+                        list.push(Token::Identifier(ident));
+                    } else if get_keywords().contains(&ident.as_str()) {
                         list.push(Token::Keyword(ident));
                     } else {
                         list.push(Token::Identifier(ident));
                     }
                 }
-
                 // comments
                 '/' => {
                     chars.next(); // consume '/'
@@ -167,8 +201,17 @@ impl From<String> for TokenList {
 
                 // Operators
                 _ => {
-                    list.push(Token::Operator(c.to_string()));
-                    chars.next();
+                    let mut op = String::new();
+
+                    while let Some(&next) = chars.peek() {
+                        if is_op_char(next) {
+                            op.push(next);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    list.push(Token::Operator(op));
                 }
             }
         }

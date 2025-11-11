@@ -1,0 +1,21 @@
+char f = ',';
+int f(int i) = i;
+int f +Z +ZZ = i;
+int f(int i) +Z +ZZ = i;
+
+char f {','}
+int f(int i) { i }
+int f +Z { i }
+int f(int i) { i }
+
+
+int operator`$$$`(int a, int b) = a + b;
+
+void main(string args) +IO {
+  let x = 4;
+  let c = 4 + 4;
+  let u = 4 $$$ 4;
+  let y = FSread("cu");
+  let m { 2 }
+  IOputs(args);
+}

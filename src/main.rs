@@ -3,6 +3,8 @@ mod tokenizer;
 use std::fs;
 
 use tokenizer::*;
+
+use crate::ast::Program;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -17,5 +19,7 @@ fn main() {
         fs::read_to_string(file).expect("Error reading the file. Are you at the right path?");
     let tokens: TokenList = content.into();
 
-    dbg!(tokens);
+    let program: Program = tokens.into();
+
+    dbg!(program);
 }
