@@ -1,4 +1,4 @@
-use crate::tokenizer::TokenList;
+use crate::tokenizer::{Token, TokenList};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -53,7 +53,5 @@ pub enum Program {
 }
 
 impl From<TokenList> for Program {
-    fn from(value: TokenList) -> Self {
-        for token in value.0 {}
-    }
+    fn from(value: TokenList) -> Self {}
 }

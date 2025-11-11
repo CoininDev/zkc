@@ -8,7 +8,8 @@ pub enum Token {
     LParen,             // (
     RParen,             // )
     Semicolon,          // ;
-    Operator(String),   // +, -, *, etc.
+    BackwardSlash,
+    Operator(String), // +, -, *, etc.
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,7 +19,7 @@ pub enum Value {
     Int(isize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TokenList(pub Vec<Token>);
 impl TokenList {
     pub fn new() -> Self {
@@ -65,6 +66,10 @@ impl From<String> for TokenList {
                 }
                 ';' => {
                     list.push(Token::Semicolon);
+                    chars.next();
+                }
+                '\\' => {
+                    list.push(Token::BackwardSlash);
                     chars.next();
                 }
 
