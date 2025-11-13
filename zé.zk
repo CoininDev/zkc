@@ -1,0 +1,6 @@
+zewage MyModule {
+    let x = 5;
+    int main {
+        return x;
+    }
+}

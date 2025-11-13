@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::tokenizer::{Token, TokenList, Value};
+use crate::tokenizer::{Token, TokenList, Value, get_types};
 
 #[derive(Debug)]
 pub struct Program {
@@ -61,9 +61,13 @@ pub enum ExprData {
         pure: bool,            // true
         zimports: Vec<String>,
     },
+    Return {
+        expr: Arc<Expr>,
+    },
     Literal {
         value: Value,
     },
+    EndOfFile,
 }
 
 pub struct Parser {
@@ -88,13 +92,9 @@ impl Parser {
         self.tokens.get(self.pos)
     }
 
-    fn peek_next(&self) -> Option<&Token> {
-        self.tokens.get(self.pos + 1)
-    }
-
     fn consume(&mut self, expected: &Token) {
         if self.peek() != Some(expected) {
-            panic!("Expected {:?} at pos {}", expected, self.pos);
+            panic!("Expected {:?} but found {:?}", expected, self.peek());
         }
         self.next();
     }
@@ -108,7 +108,7 @@ impl Parser {
                 expr_data: ExprData::Variable { name },
             }
         } else {
-            panic!("Expected identifier. pos={:?}", self.peek_next());
+            panic!("Expected identifier. pos={:?}", self.peek());
         }
     }
 
@@ -125,14 +125,15 @@ impl Parser {
                 expr_data: ExprData::Literal { value },
             }
         } else {
-            panic!("Expected literal. pos={:?}", self.peek_next());
+            panic!("Expected literal. pos={:?}", self.peek());
         }
     }
 
+    //function_calling
     fn parse_function(&mut self) -> Expr {
         let name = match self.next() {
             Some(Token::Identifier(s)) => s,
-            _ => panic!("Expected function name. pos={:?}", self.peek_next()),
+            _ => panic!("Expected function name. pos={:?}", self.peek()),
         };
 
         match self.peek() {
@@ -146,7 +147,7 @@ impl Parser {
         };
 
         let mut args = vec![];
-        while self.next() != Some(Token::RParen) {
+        while self.peek() != Some(&Token::RParen) {
             args.push(self.parse_expr());
         }
 
@@ -160,7 +161,7 @@ impl Parser {
             },
         }
     }
-
+    //function/variable assignment
     fn parse_assign(&mut self) -> Expr {
         // 1. type or let
         let explicit_type = match self.peek() {
@@ -174,9 +175,12 @@ impl Parser {
                     _ => panic!("Unknown type keyword {}", kw),
                 })
             }
-            _ => panic!("Expected assignment start (let or type)"),
+            _ => panic!(
+                "Expected assignment start (let or type) but found {:?}",
+                self.peek()
+            ),
         };
-        self.next();
+        self.next(); //type 
 
         // 2. identifier
         let name = match self.next() {
@@ -189,8 +193,10 @@ impl Parser {
         if self.peek() == Some(&Token::LParen) {
             self.next(); // consume '('
             while self.peek() != Some(&Token::RParen) {
-                params.push(self.parse_expr());
+                params.push(self.parse_param());
             }
+            //self.next();
+            //self.next();
             self.consume(&Token::RParen);
         }
 
@@ -265,42 +271,69 @@ impl Parser {
 
             _ => panic!(
                 "Expected '=' or '{{' in function assignment, pos={:?}",
-                self.peek_next()
+                self.peek()
             ),
         }
     }
 
-    fn parse_function_header(&mut self, return_type: Type) -> (String, Vec<Expr>, Vec<String>) {
-        // name
-        let name = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            _ => panic!("Expected function name"),
-        };
-
-        // parameters?
-        let mut params = vec![];
-        if let Some(Token::LParen) = self.peek() {
-            self.next(); // consume '('
-            while self.peek() != Some(&Token::RParen) {
-                params.push(self.parse_expr());
-            }
-
-            dbg!(self.next()); // consume ')'
-        }
-
-        // zimports
-        let zimports = self.parse_zimports();
-
-        (name, params, zimports)
-    }
-
     fn parse_expr(&mut self) -> Expr {
+        dbg!(&self.peek());
         match self.peek() {
             Some(Token::Keyword(k)) if k == "let" => self.parse_assign(),
-            Some(Token::Keyword(_)) => self.parse_assign(),
+            Some(Token::Keyword(k)) if get_types().contains(&k.as_str()) => self.parse_assign(),
+            Some(Token::Keyword(k)) if k == "return" => self.parse_return(),
             Some(Token::ValueLit(_)) => self.parse_literal(),
             Some(Token::Identifier(_)) => self.parse_function(),
+            None => Expr {
+                expr_type: Type::Int,
+                expr_data: ExprData::EndOfFile,
+            },
             _ => panic!("Unexpected token {:?}, pos={}", self.peek(), self.pos),
+        }
+    }
+
+    fn parse_param(&mut self) -> Expr {
+        let explicit_type = match self.peek() {
+            Some(Token::Keyword(kw)) if kw == "let" => None,
+            Some(Token::Keyword(kw)) => Some(match kw.as_str() {
+                "int" => Type::Int,
+                "string" => Type::String,
+                "char" => Type::Char,
+                "void" => Type::Int,
+                _ => panic!("Unknown type keyword {}", kw),
+            }),
+            _ => panic!(
+                "Expected assignment start (let or type) but found {:?}",
+                self.peek()
+            ),
+        };
+        self.next();
+
+        let name = match self.next() {
+            Some(Token::Identifier(n)) => n,
+            _ => panic!("Expected identifier"),
+        };
+
+        let my_type = explicit_type.unwrap_or(Type::Int);
+
+        Expr {
+            expr_type: my_type,
+            expr_data: ExprData::Variable { name },
+        }
+    }
+
+    fn parse_return(&mut self) -> Expr {
+        self.consume(&Token::Keyword("return".into()));
+
+        let expr = self.parse_expr();
+
+        self.consume(&Token::Semicolon);
+
+        Expr {
+            expr_type: expr.expr_type.clone(),
+            expr_data: ExprData::Return {
+                expr: Arc::new(expr),
+            },
         }
     }
 
@@ -309,9 +342,14 @@ impl Parser {
 
         loop {
             match self.peek() {
-                Some(Token::Operator(op)) if op.starts_with("+") => {
-                    let zimport = op.trim_start_matches('+').to_string();
-                    self.next();
+                Some(Token::Operator(op)) if op == "+" => {
+                    self.next(); //consume operator
+                    let zimport = match self.next() {
+                        // consume name
+                        Some(Token::Identifier(p)) => p,
+                        _ => panic!("Expected zimport name after +. {:?}", self.peek()),
+                    };
+                    //self.next();
                     zimports.push(zimport);
                 }
 
@@ -325,22 +363,27 @@ impl Parser {
     fn parse_zewage(&mut self) -> Zewage {
         let name = match self.next() {
             Some(Token::Keyword(k)) if k == "zewage" => self.next(),
-            _ => panic!("Expected zewage. pos={:?}", self.peek_next()),
+            _ => panic!("Expected zewage. pos={:?}", self.peek()),
         };
         let name = match name {
             Some(Token::Identifier(s)) => s,
-            _ => panic!("Expected zewage name. pos={:?}", self.peek_next()),
+            _ => panic!("Expected zewage name. pos={:?}", self.peek()),
         };
 
+        dbg!(&name);
+
         let mut functions = vec![];
-        match self.next() {
+        match self.peek() {
             Some(Token::LBrace) => {
-                while self.next() != Some(Token::RBrace) {
+                self.next();
+                while self.peek() != Some(&Token::RBrace) {
                     let expr = self.parse_expr();
                     functions.push(expr);
                 }
+                self.next();
             }
             Some(Token::Semicolon) => {
+                self.next();
                 while !self.is_done() {
                     let expr = self.parse_expr();
                     functions.push(expr);

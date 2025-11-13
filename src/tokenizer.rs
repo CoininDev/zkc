@@ -1,15 +1,16 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Keyword(String),    // e.g., int, return
-    Identifier(String), // e.g., main, IOputs
+    Keyword(String),    // e.g., int, return,
+    Identifier(String), // e.g., main, IOputs, operator`%&%`
     ValueLit(Value),    // e.g., 0, "Olá mundo"
     LBrace,             // {
     RBrace,             // }
     LParen,             // (
     RParen,             // )
     Semicolon,          // ;
-    BackwardSlash,
-    Operator(String), // +, -, *, etc.
+    BackwardSlash,      // \
+    Comma,              // ,
+    Operator(String),   // +, -, *, etc.
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,12 +32,17 @@ impl TokenList {
     }
 }
 
-fn get_keywords() -> Vec<&'static str> {
-    vec!["int", "char", "return", "module", "string", "float", "if"].into()
+pub fn get_keywords() -> Vec<&'static str> {
+    let mut keywords = vec!["let", "return", "zewage", "if", "use"];
+    keywords.extend(get_types());
+    keywords
+}
+
+pub fn get_types() -> Vec<&'static str> {
+    vec!["int", "char", "string", "float"]
 }
 
 fn is_op_char(c: char) -> bool {
-    // Allowed operator characters (Haskell style):
     !c.is_alphanumeric()
         && !c.is_whitespace()
         && !matches!(c, '_' | '(' | ')' | '{' | '}' | '[' | ']' | '"' | '\'')
@@ -70,6 +76,9 @@ impl From<String> for TokenList {
                 ')' => {
                     list.push(Token::RParen);
                     chars.next();
+                }
+                ',' => {
+                    list.push(Token::Comma);
                 }
                 ';' => {
                     list.push(Token::Semicolon);
