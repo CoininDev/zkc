@@ -1,3 +1,4 @@
+use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Keyword(String),    // e.g., int, return,
@@ -10,7 +11,88 @@ pub enum Token {
     Semicolon,          // ;
     BackwardSlash,      // \
     Comma,              // ,
-    Operator(String),   // +, -, *, etc.
+    Operator(Operator), // +, -, *, etc.
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Operator {
+    Plus,
+    Minus,
+    Mult,
+    Div,
+    Assign,
+    Eq,
+    Dif,
+    Gt,
+    Lt,
+    Geq,
+    Leq,
+    Custom(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Assoc {
+    Left,
+    Right,
+}
+
+impl Operator {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "+" => Some(Self::Plus),
+            "-" => Some(Self::Minus),
+            "*" => Some(Self::Mult),
+            "/" => Some(Self::Div),
+            "==" => Some(Self::Eq),
+            "!=" => Some(Self::Dif),
+            ">" => Some(Self::Gt),
+            "<" => Some(Self::Lt),
+            ">=" => Some(Self::Geq),
+            "<=" => Some(Self::Leq),
+            _ => Some(Self::Custom(s.to_string())),
+        }
+    }
+
+    pub fn precedence(&self) -> u8 {
+        match self {
+            Operator::Plus | Operator::Minus => 1,
+            Operator::Mult | Operator::Div => 2,
+            Operator::Eq
+            | Operator::Dif
+            | Operator::Gt
+            | Operator::Lt
+            | Operator::Geq
+            | Operator::Assign
+            | Operator::Leq => 0,
+            Operator::Custom(_) => 3,
+        }
+    }
+
+    pub fn associativity(&self) -> Assoc {
+        match self {
+            Self::Mult | Self::Div | Self::Plus | Self::Minus => Assoc::Left,
+            _ => Assoc::Left,
+        }
+    }
+}
+
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Plus => write!(f, "+"),
+            Self::Minus => write!(f, "-"),
+            Self::Mult => write!(f, "*"),
+            Self::Div => write!(f, "/"),
+            Self::Eq => write!(f, "=="),
+            Self::Dif => write!(f, "!="),
+            Self::Gt => write!(f, ">"),
+            Self::Lt => write!(f, "<"),
+            Self::Geq => write!(f, ">="),
+            Self::Leq => write!(f, "<="),
+            Self::Assign => write!(f, "="),
+            Self::Custom(s) => write!(f, "{s}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +161,7 @@ impl From<String> for TokenList {
                 }
                 ',' => {
                     list.push(Token::Comma);
+                    chars.next();
                 }
                 ';' => {
                     list.push(Token::Semicolon);
@@ -200,11 +283,11 @@ impl From<String> for TokenList {
                             }
                         } else {
                             // it's actually just the '/' operator
-                            list.push(Token::Operator("/".to_string()));
+                            list.push(Token::Operator(Operator::Div));
                         }
                     } else {
                         // '/' at end of input
-                        list.push(Token::Operator("/".to_string()));
+                        list.push(Token::Operator(Operator::Div));
                     }
                 }
 
@@ -220,6 +303,8 @@ impl From<String> for TokenList {
                             break;
                         }
                     }
+
+                    let op = Operator::from_str(op.as_str()).unwrap_or(Operator::Plus);
                     list.push(Token::Operator(op));
                 }
             }

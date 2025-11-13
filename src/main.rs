@@ -1,4 +1,4 @@
-mod ast;
+//mod ast;
 mod newast;
 mod tokenizer;
 use std::fs;

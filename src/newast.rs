@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::tokenizer::{Token, TokenList};
+use crate::tokenizer::{Operator, Token, TokenList, Value};
 
 #[derive(Debug)]
 pub struct Program {
@@ -12,6 +12,7 @@ impl From<TokenList> for Program {
         let mut code = vec![];
         let mut parser = Parser::new(value.0);
         while !parser.is_done() {
+            dbg!(parser.pos);
             let x = parser.parse_expr();
             code.push(x);
         }
@@ -22,12 +23,20 @@ impl From<TokenList> for Program {
 
 #[derive(Debug)]
 pub enum Expr {
+    Lit(LiteralValue),
     Return(Arc<Expr>),
     Assign(Arc<Expr>, Vec<Expr>),
     Variable(String),
     Lambda(Arc<Expr>, Vec<Expr>),
     FunctionCall(Arc<Expr>, Vec<Expr>),
     Block(Vec<Expr>),
+}
+
+#[derive(Debug)]
+pub enum LiteralValue {
+    String(String),
+    Number(isize),
+    Char(char),
 }
 
 pub struct Parser {
@@ -39,20 +48,84 @@ impl Parser {
     pub fn parse_expr(&mut self) -> Expr {
         match self.peek() {
             Some(Token::Keyword(s)) if s == "return" => self.parse_return(),
+            Some(Token::ValueLit(_)) => match self.peek_ahead(1) {
+                Some(Token::Operator(_)) => self.parse_operation(),
+                _ => self.parse_literal(),
+            },
             Some(Token::Identifier(_)) => match self.peek_ahead(1) {
                 Some(Token::LParen) => self.parse_assign(),
-                Some(Token::Operator(x)) if x == "=" => self.parse_assign(),
+                Some(Token::Operator(x)) if x == &Operator::Assign => self.parse_assign(),
                 Some(Token::Operator(_)) => self.parse_operation(),
                 _ => self.parse_variable(),
             },
-            Some(Token::Operator(op)) if op == "\\" => self.parse_lambda(),
+            Some(Token::BackwardSlash) => self.parse_lambda(),
             _ => panic!("parse_expr got to the end with {:?}", self.peek()),
         }
     }
 
+    pub fn parse_literal(&mut self) -> Expr {
+        let lit = match self.next() {
+            Some(Token::ValueLit(a)) => a,
+            _ => panic!("expected Value literal, found {:?}", self.peek()),
+        };
+
+        match lit {
+            Value::Int(i) => Expr::Lit(LiteralValue::Number(i)),
+            Value::String(i) => Expr::Lit(LiteralValue::String(i)),
+            Value::Char(i) => Expr::Lit(LiteralValue::Char(i)),
+        }
+    }
+
     pub fn parse_operation(&mut self) -> Expr {
-        // 5 + 4 => (+) (5, 4)
-        todo!()
+        self.parse_binary_expr(0)
+    }
+
+    fn parse_binary_expr(&mut self, min_prec: u8) -> Expr {
+        let mut left = self.parse_primary();
+
+        loop {
+            let op = match self.peek() {
+                Some(Token::Operator(op)) => op.clone(),
+                _ => break,
+            };
+
+            let prec = op.precedence();
+            if prec < min_prec {
+                break;
+            }
+
+            // consome o operador
+            self.next();
+
+            // lê o operando da direita
+            let mut right = self.parse_primary();
+
+            // se o próximo operador tem precedência maior, trata ele primeiro
+            while let Some(Token::Operator(next_op)) = self.peek() {
+                if next_op.precedence() > prec {
+                    right = self.parse_binary_expr(next_op.precedence());
+                } else {
+                    break;
+                }
+            }
+
+            left = Expr::FunctionCall(Arc::new(Expr::Variable(op.to_string())), vec![left, right]);
+        }
+
+        left
+    }
+
+    fn parse_primary(&mut self) -> Expr {
+        match self.next() {
+            Some(Token::ValueLit(Value::Int(n))) => Expr::Lit(LiteralValue::Number(n)),
+            Some(Token::Identifier(id)) => Expr::Variable(id),
+            Some(Token::LParen) => {
+                let expr = self.parse_expr();
+                self.expect(&Token::RParen, "parse_primary");
+                expr
+            }
+            other => panic!("esperado número ou parênteses, encontrado {:?}", other),
+        }
     }
 
     pub fn parse_return(&mut self) -> Expr {
@@ -88,7 +161,8 @@ impl Parser {
                     self.expect(&Token::Semicolon, "parse_assign resolving code");
                 }
             }
-            Some(Token::Operator(x)) if x == "=" => {
+            Some(Token::Operator(Operator::Assign)) => {
+                self.next();
                 let expr = self.parse_expr();
                 code.push(expr);
                 self.expect(&Token::Semicolon, "parse_assign resolving code");
@@ -110,12 +184,10 @@ impl Parser {
     }
 
     pub fn parse_variable(&mut self) -> Expr {
-        let v = match self.peek() {
-            Some(Token::Identifier(i)) => i,
+        match self.next() {
+            Some(Token::Identifier(i)) => Expr::Variable(i),
             _ => panic!("Expected a Variable identifier, found {:?}", self.peek()),
-        };
-
-        Expr::Variable(v.clone())
+        }
     }
 
     // just for already defined lambdas
