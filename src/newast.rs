@@ -53,11 +53,12 @@ impl Parser {
                 _ => self.parse_literal(),
             },
             Some(Token::Identifier(_)) => match self.peek_ahead(1) {
-                Some(Token::LParen) => self.parse_assign(),
+                Some(Token::LParen) => self.parse_assign(), // or parse_function_call?
                 Some(Token::Operator(x)) if x == &Operator::Assign => self.parse_assign(),
                 Some(Token::Operator(_)) => self.parse_operation(),
                 _ => self.parse_variable(),
             },
+            Some(Token::LParen) => self.parse_operation(),
             Some(Token::BackwardSlash) => self.parse_lambda(),
             _ => panic!("parse_expr got to the end with {:?}", self.peek()),
         }
@@ -116,10 +117,11 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Expr {
-        match self.next() {
-            Some(Token::ValueLit(Value::Int(n))) => Expr::Lit(LiteralValue::Number(n)),
-            Some(Token::Identifier(id)) => Expr::Variable(id),
+        match self.peek() {
+            Some(Token::ValueLit(Value::Int(_))) => self.parse_literal(),
+            Some(Token::Identifier(_)) => self.parse_variable(),
             Some(Token::LParen) => {
+                self.next(); // consume LParen
                 let expr = self.parse_expr();
                 self.expect(&Token::RParen, "parse_primary");
                 expr
